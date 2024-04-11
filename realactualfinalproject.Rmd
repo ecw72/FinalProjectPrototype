@@ -1,0 +1,359 @@
+---
+title: "EllaWalmsley_FinalPrototype"
+output: html_document
+date: "2024-04-10"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+install.packages("osmdata")
+install.packages("dplyr")
+install.packages("rnaturalearth")
+install.packages("devtools")
+install.packages("shiny")
+install.packages("leaflet")
+install.packages("readxl")
+install.packages("ggmap")
+install.packages('rsconnect')
+library(devtools)
+     devtools::install_github("ropensci/rnaturalearthhires")
+library(dplyr)
+library(osmdata)
+library(ggplot2)
+library(sf)
+library(rnaturalearth)
+library(shiny)
+library(leaflet)
+library(readxl)
+library(ggmap)
+library(leaflet)
+library(RColorBrewer)
+library(leaflet.extras)
+library(rsconnect)
+setwd("/Users/ellawalmsley/Downloads")
+```
+
+```{r dataload fastfood}
+nj_bbox <- c(left = -75.562, bottom = 38.928, right = -73.885, top = 41.357)
+
+fast_food_data <- opq(bbox = nj_bbox) %>%
+  add_osm_feature(key = 'amenity', value = 'fast_food') %>%
+  osmdata_sf()
+
+filtered_data <- fast_food_data$osm_points %>%
+  filter(!is.na(name))
+head(filtered_data)
+
+modified_data <- filtered_data %>%
+  rename(
+    Block_number = `addr:block_number`,
+    City = `addr:city`,
+    Country = `addr:country`,
+    County = `addr:county`,
+    Housenumber = `addr:housenumber`,
+    State = `addr:state`,
+    Postcode = `addr:postcode`,
+    Street = `addr:street`
+  ) %>%
+  select(osm_id, name, Block_number, City, Country, County, Housenumber, State, Postcode, Street, geometry)
+
+sf_data <- st_as_sf(modified_data, wkt = "geometry")
+
+```
+
+```{r dataload grocery}
+#grocery_data <- read_xlsx("AuthGroceryVendorsNJ.xlsx")
+#head(grocery_data)
+
+#register_google(key = "mykey")
+
+
+#grocery_data <- grocery_data %>%
+ # mutate(FullAddress = paste(Address, City, State, Zip, sep = ", "))
+
+
+#geocode_address <- function(address) {
+ # result <- geocode(address, output = "latlona", source = "google")
+ # return(result)
+#}
+#geocode_address <- function(address) {
+ # result <- ggmap::geocode(address)
+ # return(result)
+#}
+
+
+#grocery_data <- grocery_data %>%
+#  rowwise() %>%
+#  mutate(GeoCode = list(geocode_address(FullAddress)),
+#         Latitude = GeoCode$lat,
+#         Longitude = GeoCode$lon) %>%
+#  select(-GeoCode, -FullAddress)
+
+#print(grocery_data)
+
+write.csv(grocery_data, "grocery_data.csv", row.names = FALSE)
+grocery_data <- read_csv("grocery_data.csv")
+```
+
+```{r combining}
+
+grocery_data_clean <- grocery_data %>%
+  filter(!is.na(Longitude) & !is.na(Latitude))
+
+grocery_data_sf <- st_as_sf(grocery_data_clean, coords = c("Longitude", "Latitude"), crs = 4326, remove = FALSE)
+
+sf_data <- st_as_sf(sf_data, coords = c("Longitude", "Latitude"), crs = 4326, remove = FALSE) 
+
+grocery_df_map <- grocery_data_sf %>%
+  select(Name, Latitude, Longitude)
+
+fastfood_df_map <- sf_data %>%
+  rename(Name = name) %>%
+  select(Name, geometry)
+
+grocery_df_map$Category <- "Grocery"
+fastfood_df_map$Category <- "Fast Food" 
+
+grocery_df_map <- grocery_df_map %>%
+  select(Name, Category, geometry)
+
+fastfood_aligned <- fastfood_df_map %>% select(Name, Category, geometry)
+grocery_aligned <- grocery_df_map %>% select(Name, Category, geometry)
+
+combined_df_map <- rbind(fastfood_aligned, grocery_aligned)
+
+str(combined_df_map)
+
+head(combined_df_map)
+```
+
+
+```{r}
+states <- ne_states(country = "united states of america", returnclass = "sf")
+nj_boundaries <- states[states$name == "New Jersey",]
+
+head(combined_df_map)
+leaflet() %>%
+  addTiles() %>%
+  
+  addPolygons(data = nj_boundaries, 
+              color = "#444444",  # Dark grey border
+              weight = 2,  # Thicker border line
+              fillOpacity = 0.2,  
+              fillColor = "transparent") %>%  
+
+  addCircleMarkers(data = combined_df_map,
+                   color = ~ifelse(Category == "Fast Food", "yellow", "green"),
+                   popup = ~paste(Name, "<br>", Category),
+                   opacity = 1, fillOpacity = 0.8, radius = 1) %>%  
+  
+  addLegend(position = "bottomright",
+            colors = c("yellow", "green"),
+            labels = c("Fast Food", "Grocery"),
+            title = "Category") %>%
+  setView(lng = -74.5, lat = 40.0, zoom = 7)  
+
+```
+
+```{r zipcodes}
+zipcode_data <- read.csv("PLACES__ZCTA_Data__GIS_Friendly_Format___2023_release.csv")
+head(zipcode_data)
+income_data <- read_excel("incomedata.xlsx")
+
+zipcode_data <- zipcode_data %>% rename(Zip = ZCTA5)
+
+
+zipcode_data <- zipcode_data %>% select(Zip, Geolocation)
+
+
+merged_data <- left_join(income_data, zipcode_data %>% select(Zip, Geolocation), by = "Zip")
+
+merged_data <- merged_data %>% filter(!is.na(Geolocation))
+
+head(merged_data)
+
+
+
+```
+```{r zipcode merge}
+merged_data <- merged_data %>%
+  mutate(geometry = st_as_sfc(Geolocation, crs = 4326))
+
+merged_data_sf <- st_as_sf(merged_data, crs = 4326, agr = "constant")
+
+merged_data_sf <- merged_data_sf %>% select(-Geolocation)
+
+merged_data_sf <- st_as_sf(merged_data, crs = 4326, agr = "constant")
+
+head(merged_data_sf)
+colnames(merged_data_sf)
+```
+```{r populations test}
+coords <- st_coordinates(merged_data_sf)
+populations <- merged_data_sf$Population
+
+leaflet() %>%
+  addProviderTiles(providers$CartoDB.Positron) %>%
+  addHeatmap(lng = coords[,1], lat = coords[,2], intensity = populations, radius = 20, blur = 15, minOpacity = 0.5) %>%
+  setView(lng = -74.5, lat = 40.0, zoom = 7)
+```
+
+```{r RatioCalculator}
+calculate_ratio <- function(lat, long, combined_df_map, radius) {
+  input_location <- st_sfc(st_point(c(long, lat)), crs = st_crs(combined_df_map))
+  
+  distances <- st_distance(input_location, combined_df_map)
+  
+  nearby_stores <- combined_df_map[distances <= radius, ]
+  
+  counts <- nearby_stores %>% 
+    group_by(Category) %>% 
+    summarise(Count = n())
+  
+  fast_food_count <- ifelse("Fast Food" %in% counts$Category, counts$Count[which(counts$Category == "Fast Food")], 0)
+  grocery_count <- ifelse("Grocery" %in% counts$Category, counts$Count[which(counts$Category == "Grocery")], 0)
+  
+  ratio <- fast_food_count / grocery_count
+  
+  if(grocery_count == 0) {
+    ratio <- NA 
+  }
+  
+  return(ratio)
+}
+```
+
+```{r}
+write.csv(population_data, "population_data.csv", row.names = FALSE)
+write.csv(combined_df_map, "combined_df_map.csv", row.names = FALSE)
+
+```
+
+
+```{r}
+population_data <- populations
+
+calculate_ratio <- function(user_lat, user_long, combined_df_map, radius) {
+  combined_df_map_proj <- st_transform(combined_df_map, 3857)
+  
+  user_location <- st_sfc(st_point(c(user_long, user_lat)), crs = 4326)
+  user_location_proj <- st_transform(user_location, 3857)
+  
+  search_area <- st_buffer(user_location_proj, dist = radius)
+  
+  stores_within_radius <- st_intersection(combined_df_map_proj, search_area)
+  
+  df_within_radius <- as.data.frame(stores_within_radius)
+  
+  if (nrow(df_within_radius) == 0) {
+    return(list(ratio = NA, fast_food_count = 0, grocery_count = 0))
+  }
+  
+  store_counts <- df_within_radius %>%
+    group_by(Category) %>%
+    summarise(Count = n(), .groups = 'drop')
+  
+  fast_food_count <- ifelse('Fast Food' %in% store_counts$Category, 
+                            store_counts$Count[store_counts$Category == 'Fast Food'], 
+                            0)
+  grocery_count <- ifelse('Grocery' %in% store_counts$Category, 
+                          store_counts$Count[store_counts$Category == 'Grocery'], 
+                          0)
+  
+  ratio <- ifelse(grocery_count > 0, fast_food_count / grocery_count, NA)
+  
+  return(list(ratio = ratio, fast_food_count = fast_food_count, grocery_count = grocery_count))
+}
+
+ui <- fluidPage(
+  titlePanel("Fast Food to Grocery Store Ratio in NJ"),
+  sidebarLayout(
+    sidebarPanel(
+      textInput("street", "Street Address", "290 George St"),
+      textInput("city", "City", "New Brunswick"),
+      textInput("state", "State", "NJ"),
+      textInput("zip", "ZIP Code", "08901"),
+      actionButton("go", "Get Ratio"),
+      textOutput("ratioText"),
+      selectInput("heatmapType", "Toggle Population Heatmap:", 
+                  choices = list("Off" = "off", "Population" = "population"), selected = "off"),
+      HTML("<h3>What does this ratio mean?</h3>
+           <p>The ratio represents the number of fast food outlets compared to grocery stores within a specified radius (one mile) from the entered address. A higher ratio indicates a greater prevalence of fast food options relative to grocery stores, which might reflect on the local food environment and accessibility to different types of food.</p>")
+    ),
+    mainPanel(
+      leafletOutput("njMap", height = "700px")
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$njMap <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      setView(lng = -74.5, lat = 40.0, zoom = 7) %>%
+      addPolygons(
+        data = nj_boundaries, 
+        color = "#444444",
+        weight = 2,
+        fillOpacity = 0.2,  
+        fillColor = "transparent"
+      ) %>%
+      addCircleMarkers(
+        data = combined_df_map,
+        color = ~ifelse(Category == "Fast Food", "yellow", "green"),
+        popup = ~paste(Name, "<br>", Category),
+        opacity = 1, fillOpacity = 0.8, radius = 1
+      ) %>%
+      addLegend(
+        position = "bottomright",
+        colors = c("yellow", "green"),
+        labels = c("Fast Food", "Grocery"),
+        title = "Category"
+      )
+  })
+
+ observe({
+    leafletProxy("njMap") %>% clearGroup("Population Heatmap")
+    
+    if(input$heatmapType == "population") {
+      req(nrow(merged_data_sf) > 0)
+      
+      coords <- st_coordinates(merged_data_sf)
+      population <- merged_data_sf$Population  
+      
+      leafletProxy("njMap") %>%
+        addHeatmap(lng = coords[,1], lat = coords[,2], intensity = population, radius = 20, blur = 15, group = "Population Heatmap")
+    }
+  })
+
+  observeEvent(input$go, {
+    full_address <- paste(input$street, input$city, input$state, input$zip, sep = ", ")
+    geocode_result <- ggmap::geocode(full_address, output = "latlona", source = "google")
+    
+    if (!is.na(geocode_result$lat) && !is.na(geocode_result$lon)) {
+      result <- calculate_ratio(geocode_result$lat, geocode_result$lon, combined_df_map, 1609.34) 
+      
+      output$ratioText <- renderText({
+        if (is.na(result$ratio)) {
+          paste("No grocery stores found within the specified radius.",
+                "\nFast Food Count: ", result$fast_food_count,
+                "\nGrocery Count: ", result$grocery_count)
+        } else {
+          paste("Fast Food to Grocery Store Ratio: ", format(result$ratio, digits = 2),
+                "\nFast Food Count: ", result$fast_food_count,
+                "\nGrocery Count: ", result$grocery_count)
+        }
+      })
+    } else {
+      output$ratioText <- renderText("Could not geocode the address. Please try again.")
+    }
+  })
+}
+shinyApp(ui = ui, server = server)
+
+```
+
+
+
+
+
