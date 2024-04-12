@@ -1,4 +1,3 @@
-
 library(devtools)
 devtools::install_github("ropensci/rnaturalearthhires")
 library(dplyr)
@@ -15,6 +14,7 @@ library(RColorBrewer)
 library(leaflet.extras)
 library(rsconnect)
 
+source("data_loading.R")
 
 ui <- fluidPage(
   titlePanel("Fast Food to Grocery Store Ratio in NJ"),
@@ -102,9 +102,6 @@ server <- function(input, output) {
 }
 shinyApp(ui = ui, server = server)
 
-
-library(rsconnect)
-rsconnect::deployApp('~/finalproject')
 
 
 
