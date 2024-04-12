@@ -15,6 +15,8 @@ install.packages("leaflet")
 install.packages("readxl")
 install.packages("ggmap")
 install.packages('rsconnect')
+install.packages("openxlsx")
+
 library(devtools)
      devtools::install_github("ropensci/rnaturalearthhires")
 library(dplyr)
@@ -30,10 +32,14 @@ library(leaflet)
 library(RColorBrewer)
 library(leaflet.extras)
 library(rsconnect)
-setwd("/Users/ellawalmsley/Downloads")
+library(openxlsx)
+getwd()
+setwd("/Users/ellawalmsley/finalproject")
 ```
 
 ```{r dataload fastfood}
+setwd("/Users/ellawalmsley/finalproject")
+
 nj_bbox <- c(left = -75.562, bottom = 38.928, right = -73.885, top = 41.357)
 
 fast_food_data <- opq(bbox = nj_bbox) %>%
@@ -62,42 +68,53 @@ sf_data <- st_as_sf(modified_data, wkt = "geometry")
 ```
 
 ```{r dataload grocery}
-#grocery_data <- read_xlsx("AuthGroceryVendorsNJ.xlsx")
-#head(grocery_data)
-
-#register_google(key = "mykey")
-
-
-#grocery_data <- grocery_data %>%
- # mutate(FullAddress = paste(Address, City, State, Zip, sep = ", "))
-
-
-#geocode_address <- function(address) {
- # result <- geocode(address, output = "latlona", source = "google")
- # return(result)
-#}
-#geocode_address <- function(address) {
- # result <- ggmap::geocode(address)
- # return(result)
-#}
-
-
-#grocery_data <- grocery_data %>%
-#  rowwise() %>%
-#  mutate(GeoCode = list(geocode_address(FullAddress)),
-#         Latitude = GeoCode$lat,
-#         Longitude = GeoCode$lon) %>%
-#  select(-GeoCode, -FullAddress)
-
-#print(grocery_data)
-
-write.csv(grocery_data, "grocery_data.csv", row.names = FALSE)
-grocery_data <- read_csv("grocery_data.csv")
+# setwd("/Users/ellawalmsley/finalproject")
+# 
+# grocery_data <- read_xlsx("AuthGroceryVendorsNJ.xlsx")
+# head(grocery_data)
+# 
+# api_key_path <- "/Users/ellawalmsley/Downloads/Untitled document.txt"
+# api_key <- readLines(api_key_path, warn = FALSE)
+# api_key <- trimws(api_key[1])
+# 
+# if (api_key == "") {
+#   stop("API key is missing. Check the contents of the file.")
+# }
+# 
+# register_google(key = api_key)
+# 
+# 
+# grocery_data <- grocery_data %>%
+#   mutate(FullAddress = paste(Address, City, State, Zip, sep = ", "))
+# 
+# 
+# geocode_address <- function(address) {
+#   result <- geocode(address, output = "latlona", source = "google")
+#   return(result)
+# }
+# 
+# geocode_address <- function(address) {
+#   result <- ggmap::geocode(address)
+#   return(result)
+# }
+# 
+# grocery_data <- grocery_data %>%
+#   rowwise() %>%
+#   mutate(GeoCode = list(geocode_address(FullAddress)),
+#          Latitude = GeoCode$lat,
+#          Longitude = GeoCode$lon) %>%
+#   select(-GeoCode, -FullAddress)
+# 
+# print(grocery_data)
+# 
+# write.xlsx(grocery_data, file = "grocery_data_cords.xlsx", rowNames = FALSE)
+grocery_data_cords <- read_excel("grocery_data_cords.xlsx")
+head(grocery_data_cords)
 ```
 
 ```{r combining}
 
-grocery_data_clean <- grocery_data %>%
+grocery_data_clean <- grocery_data_cords %>%
   filter(!is.na(Longitude) & !is.na(Latitude))
 
 grocery_data_sf <- st_as_sf(grocery_data_clean, coords = c("Longitude", "Latitude"), crs = 4326, remove = FALSE)
@@ -156,7 +173,8 @@ leaflet() %>%
 ```
 
 ```{r zipcodes}
-zipcode_data <- read.csv("PLACES__ZCTA_Data__GIS_Friendly_Format___2023_release.csv")
+setwd("/Users/ellawalmsley/finalproject")
+zipcode_data <- read.csv("PLACES__ZCTA_Data__GIS_Friendly_Format___2023_release copy.csv")
 head(zipcode_data)
 income_data <- read_excel("incomedata.xlsx")
 
@@ -224,8 +242,8 @@ calculate_ratio <- function(lat, long, combined_df_map, radius) {
 ```
 
 ```{r}
-write.csv(population_data, "population_data.csv", row.names = FALSE)
-write.csv(combined_df_map, "combined_df_map.csv", row.names = FALSE)
+write.csv(population_data, "population_data.csv", row.names = NULL)
+write.csv(combined_df_map, "combined_df_map.csv", row.names = NULL)
 
 ```
 
